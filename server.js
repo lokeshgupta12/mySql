@@ -7,6 +7,7 @@ var pool = require('./databaseConnection/databaseConnection')
 const bodyParser = require('body-parser');
 const session = require('express-session');
 var cors = require('cors')
+var sess;
 
 // Get our API routes
 const api = require('./server/routes/api');
@@ -20,7 +21,43 @@ app.use(bodyParser.urlencoded({ extended: false }));
 
 // Point static path to dist
 app.use(express.static(path.join(__dirname, 'dist')));
+app.use(function(req, res, next) {
 
+  if(!sess) {
+     if(req.url == '/login') {
+        next()
+     } else {
+       res.send ({
+        status: "fail",
+        message: "Please Login"
+       })
+     }
+  } else {
+    jwt.verify(req.headers.token, 'secret', function(err, decoded) {
+  if (err) {
+    console.log(err, "err")
+    delete sess.userId
+              delete sess.authToken
+              delete sess.name
+    /*
+      err = {
+        name: 'JsonWebTokenError',
+        message: 'jwt malformed'
+      }
+    */
+    res.send ({
+        status: "fail",
+        message: err.message
+       })
+  } else {
+
+    console.log(decoded, "decode")
+    next()
+  }
+});
+  }
+  
+})
 // Set our api routes
 // app.use('/api', api);
 
@@ -29,25 +66,21 @@ app.use(express.static(path.join(__dirname, 'dist')));
 //   res.sendFile(path.join(__dirname, 'dist/index.html'));
 // });
 app.post("/login", function(req, res, next) {
-       var sess = req.session
-       console.log(req.session)
+       sess = req.session
+       
 	pool.getConnection(function(err, connection) {
 		if(err) throw err;
 		var sql = "SELECT * FROM user where name =?";
        connection.query(sql, [req.body.name],function(error, firstresult) {
        	if(error) throw error;
-              // connection.release();
-              console.log(firstresult[0].name, "result")
-              var token = jwt.sign({ id: firstresult[0].name }, "secret", {
-      expiresIn: 600 // expires in 24 hours
-    });
-               var values = [
-                 [new Date(),req.sessionID, req.body.name, token]
-               ]
-              connection.query("INSERT INTO login_history (login_time, session_id, user_name, auth_token) values ?",[values],function(error, result) {
+            var token = jwt.sign({ id: firstresult[0].id }, "secret", {expiresIn: 600 });
+               var values = [[new Date(), req.body.name, token]]
+              connection.query("INSERT INTO login_history (login_time, user_name, auth_token) values ?",[values],function(error, result) {
               if(error) throw error;
               connection.release();
-              sess[req.sessionID] = token
+              sess.userId = firstresult[0].id
+              sess.authToken = token
+              sess.name = firstresult[0].name
                res.send({
                      "status": "ok",
                      "result": firstresult,
@@ -60,6 +93,24 @@ app.post("/login", function(req, res, next) {
        	 // })
        })
 	})
+})
+app.get("/listUser", function(req, res, next) {
+       
+       
+  pool.getConnection(function(err, connection) {
+    if(err) throw err;
+    var sql = "SELECT * FROM user"
+       connection.query(sql, function(error, firstresult) {
+        if(error) throw error;
+            
+               
+              
+         res.send({
+           "status": "ok",
+           "result": firstresult
+         })
+       })
+  })
 })
 
 /**
