@@ -11,7 +11,6 @@ var sess;
 
 // Get our API routes
 const api = require('./server/routes/api');
-var sessionVariable = {}
 const app = express();
  app.use(cors());
  app.use(session({secret: 'project'}));
@@ -23,7 +22,7 @@ app.use(bodyParser.urlencoded({ extended: false }));
 app.use(express.static(path.join(__dirname, 'dist')));
 app.use(function(req, res, next) {
 
-  if(!sess) {
+  if(!sess || req.url == '/login') {
      if(req.url == '/login') {
         next()
      } else {
@@ -74,8 +73,15 @@ app.post("/login", function(req, res, next) {
        connection.query(sql, [req.body.name],function(error, firstresult) {
        	if(error) throw error;
             var token = jwt.sign({ id: firstresult[0].id }, "secret", {expiresIn: 600 });
-               var values = [[new Date(), req.body.name, token]]
+              var values = [[new Date(), req.body.name, token]]
               connection.query("INSERT INTO login_history (login_time, user_name, auth_token) values ?",[values],function(error, result) {
+              if(error) throw error;
+              if(firstresult[0].user_type == 1) {
+                var query = "SELECT * FROM controller"
+              } else {
+                var query = "SELECT * FROM controller where user_id =" + firstresult[0].id;
+              }
+              connection.query(query,function(error, secondresult) {
               if(error) throw error;
               connection.release();
               sess.userId = firstresult[0].id
@@ -84,13 +90,12 @@ app.post("/login", function(req, res, next) {
                res.send({
                      "status": "ok",
                      "result": firstresult,
-                     "auth_token" : token
+                     "auth_token" : token,
+                     "appMenus" : secondresult
                })
         })
-       	 // res.send({
-       	 // 	"status": "ok",
-       	 // 	"result": result
-       	 // })
+        })
+       	 
        })
 	})
 })
